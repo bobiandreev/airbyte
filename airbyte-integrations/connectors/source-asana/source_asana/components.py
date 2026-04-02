@@ -5,13 +5,15 @@
 
 from dataclasses import dataclass
 from pkgutil import get_data
-from typing import Any, Mapping, MutableMapping, Optional, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Union
 
+import requests
 from yaml import safe_load
 
 from airbyte_cdk.sources.declarative.requesters.http_requester import HttpRequester
 from airbyte_cdk.sources.declarative.requesters.request_options.interpolated_request_input_provider import InterpolatedRequestInputProvider
 from airbyte_cdk.sources.declarative.types import StreamSlice, StreamState
+from airbyte_cdk.utils.traced_exception import AirbyteTracedException
 
 
 @dataclass
@@ -24,6 +26,38 @@ class AsanaHttpRequester(HttpRequester):
         self._request_params_interpolator = InterpolatedRequestInputProvider(
             config=self.config, request_inputs=self.request_parameters, parameters=parameters
         )
+
+    def send_request(
+        self,
+        stream_state: Optional[StreamState] = None,
+        stream_slice: Optional[StreamSlice] = None,
+        next_page_token: Optional[Mapping[str, Any]] = None,
+        path: Optional[str] = None,
+        request_headers: Optional[Mapping[str, Any]] = None,
+        request_params: Optional[Mapping[str, Any]] = None,
+        request_body_data: Optional[Union[Mapping[str, Any], str]] = None,
+        request_body_json: Optional[Mapping[str, Any]] = None,
+        log_formatter: Optional[Callable[[requests.Response], Any]] = None,
+    ) -> Optional[requests.Response]:
+        try:
+            return super().send_request(
+                stream_state, stream_slice, next_page_token, path,
+                request_headers, request_params, request_body_data, request_body_json, log_formatter,
+            )
+        except AirbyteTracedException as e:
+            if "Unauthorized" not in str(e):
+                raise
+            # Access token expired mid-sync: force a refresh and retry once.
+            # The CDK bakes the auth header into the PreparedRequest before retrying,
+            # so retries use the same expired token. We refresh here and let the next
+            # call to super().send_request() create a fresh PreparedRequest.
+            if hasattr(self.authenticator, "refresh_and_set_access_token"):
+                self.authenticator.refresh_and_set_access_token()
+                return super().send_request(
+                    stream_state, stream_slice, next_page_token, path,
+                    request_headers, request_params, request_body_data, request_body_json, log_formatter,
+                )
+            raise
 
     def get_request_params(
         self,
