@@ -15,10 +15,6 @@ definitions:
     token_refresh_endpoint: "https://app.asana.com/-/oauth_token"
     grant_type: refresh_token
     access_token_name: access_token
-    refresh_token_updater:
-      token_expiry_date_config_path:
-        - credentials
-        - token_expiry_date
 
   pat_authenticator:
     type: "BearerAuthenticator"
