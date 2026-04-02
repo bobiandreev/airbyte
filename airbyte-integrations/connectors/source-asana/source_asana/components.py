@@ -41,8 +41,15 @@ class AsanaHttpRequester(HttpRequester):
     ) -> Optional[requests.Response]:
         try:
             return super().send_request(
-                stream_state, stream_slice, next_page_token, path,
-                request_headers, request_params, request_body_data, request_body_json, log_formatter,
+                stream_state,
+                stream_slice,
+                next_page_token,
+                path,
+                request_headers,
+                request_params,
+                request_body_data,
+                request_body_json,
+                log_formatter,
             )
         except AirbyteTracedException as e:
             if "Unauthorized" not in str(e):
@@ -54,8 +61,15 @@ class AsanaHttpRequester(HttpRequester):
             if hasattr(self.authenticator, "refresh_and_set_access_token"):
                 self.authenticator.refresh_and_set_access_token()
                 return super().send_request(
-                    stream_state, stream_slice, next_page_token, path,
-                    request_headers, request_params, request_body_data, request_body_json, log_formatter,
+                    stream_state,
+                    stream_slice,
+                    next_page_token,
+                    path,
+                    request_headers,
+                    request_params,
+                    request_body_data,
+                    request_body_json,
+                    log_formatter,
                 )
             raise
 
