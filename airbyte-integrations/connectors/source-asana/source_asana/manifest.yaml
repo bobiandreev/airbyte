@@ -15,6 +15,10 @@ definitions:
     token_refresh_endpoint: "https://app.asana.com/-/oauth_token"
     grant_type: refresh_token
     access_token_name: access_token
+    refresh_token_updater:
+      token_expiry_date_config_path:
+        - credentials
+        - token_expiry_date
 
   pat_authenticator:
     type: "BearerAuthenticator"
@@ -2615,6 +2619,11 @@ spec:
                 title: ""
                 description: ""
                 airbyte_secret: true
+              token_expiry_date:
+                type: string
+                description: The date-time when the access token expires.
+                format: date-time
+                airbyte_hidden: true
           - type: object
             title: Authenticate with Personal Access Token
             required:
@@ -2674,6 +2683,7 @@ spec:
           redirect_uri: "{{ redirect_uri_value }}"
         extract_output:
           - refresh_token
+          - expires_in
       complete_oauth_output_specification:
         type: object
         properties:
@@ -2682,6 +2692,11 @@ spec:
             path_in_connector_config:
               - credentials
               - refresh_token
+          token_expiry_date:
+            type: string
+            path_in_connector_config:
+              - credentials
+              - token_expiry_date
       complete_oauth_server_input_specification:
         type: object
         properties:
