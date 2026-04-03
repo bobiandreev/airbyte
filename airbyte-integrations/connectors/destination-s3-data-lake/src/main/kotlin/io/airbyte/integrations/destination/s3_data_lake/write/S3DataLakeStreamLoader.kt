@@ -102,6 +102,15 @@ class S3DataLakeStreamLoader(
         // incrementally, and if the entire sync is in a transaction, we might crash before we can
         // commit that transaction.
         targetSchema = computeOrExecuteSchemaUpdate().schema
+
+        // Ensure the table has an initial snapshot so we can create a branch from it.
+        // When running as a custom connector, the platform may not send generationId/syncId,
+        // which means the normal initialization path that creates the initial snapshot is skipped.
+        if (table.currentSnapshot() == null) {
+            logger.info { "Creating initial empty snapshot for ${stream.mappedDescriptor}" }
+            table.newAppend().commit()
+        }
+
         try {
             logger.info {
                 "maybe creating branch $DEFAULT_STAGING_BRANCH for stream ${stream.mappedDescriptor}"
@@ -122,34 +131,28 @@ class S3DataLakeStreamLoader(
     }
 
     override suspend fun teardown(completedSuccessfully: Boolean) {
-        if (completedSuccessfully) {
-            // Doing it first to make sure that data coming in the current batch is written to the
-            // main branch
-            logger.info {
-                "No stream failure detected. Committing changes from staging branch '$stagingBranchName' to main branch '$mainBranchName."
-            }
-            // We've modified the table over the sync (i.e. adding new snapshots)
-            // so we need to refresh here to get the latest table metadata.
-            // In principle, this doesn't matter, but the iceberg SDK throws an error about
-            // stale table metadata without this.
-            table.refresh()
-            // Commit all pending schema updates in order (important for two-phase commits)
-            computeOrExecuteSchemaUpdate().pendingUpdates.forEach { it.commit() }
-            table.manageSnapshots().replaceBranch(mainBranchName, stagingBranchName).commit()
+        // Always merge staging to main. If teardown() is called, the pipeline completed
+        // without errors (DestinationLifecycle.run() does not catch pipeline exceptions).
+        // The completedSuccessfully flag reflects whether stream-complete messages were
+        // received, which some platform versions do not send for custom connectors.
+        logger.info {
+            "Committing changes from staging branch '$stagingBranchName' to main branch '$mainBranchName'."
+        }
+        table.refresh()
+        computeOrExecuteSchemaUpdate().pendingUpdates.forEach { it.commit() }
+        table.manageSnapshots().replaceBranch(mainBranchName, stagingBranchName).commit()
 
-            if (stream.isSingleGenerationTruncate()) {
-                logger.info {
-                    "Detected a minimum generation ID (${stream.minimumGenerationId}). Preparing to delete obsolete generation IDs."
-                }
-                val icebergTableCleaner = IcebergTableCleaner(icebergUtil = icebergUtil)
-                icebergTableCleaner.deleteOldGenerationData(table, stagingBranchName, stream)
-                //  Doing it again to push the deletes from the staging to main branch
-                logger.info {
-                    "Deleted obsolete generation IDs up to ${stream.minimumGenerationId - 1}. " +
-                        "Pushing these updates to the '$mainBranchName' branch."
-                }
-                table.manageSnapshots().replaceBranch(mainBranchName, stagingBranchName).commit()
+        if (completedSuccessfully && stream.isSingleGenerationTruncate()) {
+            logger.info {
+                "Detected a minimum generation ID (${stream.minimumGenerationId}). Preparing to delete obsolete generation IDs."
             }
+            val icebergTableCleaner = IcebergTableCleaner(icebergUtil = icebergUtil)
+            icebergTableCleaner.deleteOldGenerationData(table, stagingBranchName, stream)
+            logger.info {
+                "Deleted obsolete generation IDs up to ${stream.minimumGenerationId - 1}. " +
+                    "Pushing these updates to the '$mainBranchName' branch."
+            }
+            table.manageSnapshots().replaceBranch(mainBranchName, stagingBranchName).commit()
         }
     }
 
