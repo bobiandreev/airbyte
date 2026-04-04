@@ -285,6 +285,8 @@ internal class S3DataLakeStreamLoaderTest {
         every { updateSchema.commit() } just runs
         every { updateSchema.apply() } returns icebergSchema
         every { table.refresh() } just runs
+        every { table.currentSnapshot() } returns null
+        every { table.newAppend().commit() } just runs
         every { table.manageSnapshots().createBranch(any()).commit() } throws
             IllegalArgumentException("branch already exists")
         every {
@@ -461,6 +463,8 @@ internal class S3DataLakeStreamLoaderTest {
         every { updateSchema.commit() } just runs
         every { updateSchema.apply() } returns icebergSchema
         every { table.refresh() } just runs
+        every { table.currentSnapshot() } returns null
+        every { table.newAppend().commit() } just runs
         every { table.manageSnapshots().createBranch(any()).commit() } just runs
         every {
             table.manageSnapshots().replaceBranch("main", DEFAULT_STAGING_BRANCH).commit()
